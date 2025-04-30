@@ -53,8 +53,81 @@ This tool is specifically optimized for addiction and mental health research:
 - **Terminology Focus**: The AI assistant has enhanced capabilities for mental health terminology
 - **Research Gap Analysis**: Particularly attuned to identifying gaps in mental health literature
 
+## PRISMA Framework Integration
+
+A major advancement in our tool is the complete implementation of the PRISMA (Preferred Reporting Items for Systematic Reviews and Meta-Analyses) methodology directly within the application.
+
+### PRISMA Framework Background
+
+PRISMA is the gold standard for conducting and reporting systematic reviews and meta-analyses, ensuring methodological rigor, transparency, and reproducibility. While PubMed only offers basic search capabilities, our tool guides users through the entire PRISMA process.
+
+### End-to-End Systematic Review Management
+
+Our PRISMA workflow implementation provides:
+
+1. **Database-Backed Persistence**: All review data is stored in a SQLite database, ensuring data integrity and allowing multi-session work
+2. **Multi-User Collaboration**: Each researcher maintains their own review portfolio
+3. **Structured Review Creation**: Guided interface for defining research questions and PICO criteria
+4. **Export Capabilities**: Export review data in both CSV and JSON formats
+
+### PRISMA Stage Implementation
+
+#### Identification Stage
+
+The identification stage provides:
+
+- **Direct PubMed Integration**: Search and import results from PubMed with a single click
+- **Manual Record Entry**: Add studies from other sources
+- **Search History Integration**: Import from your previous searches
+- **Automatic Deduplication**: Two methods (title/abstract matching and PMID matching)
+- **Progress Tracking**: Real-time updates on identified records
+
+PubMed alone has no concept of organizing records for systematic review preparation.
+
+#### Screening Stage
+
+The screening interface offers:
+
+- **Individual Record Review**: Structured examination of titles and abstracts
+- **Inclusion/Exclusion Application**: Apply your predefined criteria
+- **Term Highlighting**: Automatic highlighting of inclusion/exclusion terms
+- **Decision Documentation**: Record notes for each screening decision
+- **Progress Monitoring**: Real-time statistics on screening completion
+
+This eliminates the need for external spreadsheets or tools to manage the screening process.
+
+#### Eligibility Stage
+
+For full-text assessment, the tool provides:
+
+- **Full-Text Link Integration**: Direct links to access full-text resources
+- **Structured Assessment**: Apply detailed eligibility criteria
+- **Decision Tracking**: Document reasons for exclusion with standardized categories
+- **Screening Notes Review**: Access previous screening decisions while assessing eligibility
+- **Automatic Progress Updates**: Track completion across all articles
+
+#### Inclusion Stage
+
+The final stage facilitates:
+
+- **Structured Data Extraction**: Comprehensive form for extracting key data points
+- **Standardized Extraction Fields**: Consistent data capture across all studies
+- **Study Characteristics Documentation**: Record study design, sample size, and methods
+- **Results Extraction**: Structured fields for outcomes and findings
+- **Synthesis Preparation**: Organize extracted data for review writing
+
+### Technical Implementation
+
+The PRISMA framework implementation includes:
+
+- **Relational Database Design**: Tables for reviews, studies, and review stages
+- **State Management**: Proper tracking of each study's status throughout the workflow
+- **Transaction Safety**: Database integrity protection during all operations
+- **Review Ownership**: Security controls to ensure proper access control
+- **Data Validation**: Input validation at each step of the process
+
 ## Conclusion
 
-While the standard PubMed website provides powerful search capabilities, our PubMed Search App enhances the research experience through AI assistance, data visualization, improved user interface, and specialized features for mental health research. These advantages help researchers save time, discover insights more easily, and ultimately advance their research more efficiently.
+While the standard PubMed website provides powerful search capabilities, our PubMed Search App transforms the research experience through AI assistance, data visualization, improved user interface, and a complete PRISMA framework implementation. The PRISMA workflow feature alone represents a major advance, converting PubMed from merely a search engine into a complete systematic review management system.
 
-The combination of advanced technology with domain-specific optimization makes this tool particularly valuable for anyone conducting research in addiction and mental health fields.
+Researchers conducting systematic reviews no longer need to cobble together disparate tools (spreadsheets, reference managers, note-taking applications) to follow PRISMA guidelines. Our integrated solution streamlines the entire process, improves methodological adherence, and ultimately produces higher quality systematic reviews with less effort.
