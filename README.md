@@ -1,4 +1,4 @@
-# Advantages of Our PubMed Search Tool Over the Standard PubMed Website
+# The Advantages of Our PubMed Search Tool Over the Standard PubMed Website
 
 ## Introduction
 
