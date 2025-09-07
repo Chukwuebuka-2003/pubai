@@ -1,162 +1,413 @@
-import google.generativeai as genai
-import os
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
+import os
+import yaml
+import time
+import logging
+from typing import Dict, List, Any, Optional
+from pathlib import Path
 
 load_dotenv()
 
-# Configure Gemini
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
-# Initialize the model
-model = genai.GenerativeModel('gemini-1.5-flash')
+client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
 
-def explain_medical_terms(terms: list[str]) -> dict:
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+def load_prompts_config() -> Dict[str, Any]:
+    """Load prompts configuration from YAML file"""
+    config_path = Path(__file__).parent.parent / "prompts" / "prompts.yaml"
+    try:
+        with open(config_path, 'r', encoding='utf-8') as file:
+            return yaml.safe_load(file)
+    except FileNotFoundError:
+        logger.error(f"Prompts configuration file not found at {config_path}")
+        raise
+    except yaml.YAMLError as e:
+        logger.error(f"Error parsing YAML configuration: {e}")
+        raise
+
+
+CONFIG = load_prompts_config()
+GLOBAL_CONFIG = CONFIG['global']
+PROMPTS = CONFIG['prompts']
+ERROR_MESSAGES = CONFIG['error_handling']
+VALIDATION = CONFIG['validation']
+
+def validate_input(data: Any, function_name: str, additional_data: Optional[Any] = None) -> bool:
+    """Validate input data based on function requirements"""
+    if function_name == "explain_medical_terms":
+        terms = data
+        abstracts = additional_data
+        if not isinstance(terms, list) or len(terms) == 0:
+            return False
+        if len(terms) > VALIDATION['max_terms_explain']:
+            return False
+        if not isinstance(abstracts, list):
+            return False
+
+        total_abstracts_length = sum(len(abstract) for abstract in abstracts)
+        if total_abstracts_length > VALIDATION['max_abstracts_explain_context_length']:
+            return False
+        return True
+
+    elif function_name == "analyze_methodology":
+        if not isinstance(data, str) or len(data) < VALIDATION['min_abstract_length']:
+            return False
+        if len(data) > VALIDATION['max_abstract_length']:
+            return False
+        return True
+
+    elif function_name == "analyze_research_gaps":
+        if not isinstance(data, list) or len(data) == 0:
+            return False
+        if len(data) > VALIDATION['max_abstracts_gaps']:
+            return False
+        return True
+
+    elif function_name == "generate_literature_review":
+        if not isinstance(data, list) or len(data) == 0:
+            return False
+        if len(data) > VALIDATION['max_abstracts_review']:
+            return False
+        return True
+
+    elif function_name == "compare_studies":
+        if not isinstance(data, list) or len(data) == 0:
+            return False
+        if len(data) > VALIDATION['max_studies_compare']:
+            return False
+        return True
+
+    return True
+
+def make_api_call_with_retry(prompt: str, system_instruction: str, config: Dict[str, Any], function_name: str) -> str:
+    """Make API call with retry logic and error handling"""
+    for attempt in range(GLOBAL_CONFIG['retry_attempts']):
+        try:
+            # Build safety settings
+            safety_settings = []
+            for setting in GLOBAL_CONFIG['safety_settings']:
+                safety_settings.append(types.SafetySetting(
+                    category=setting['category'],
+                    threshold=setting['threshold']
+                ))
+
+            response = client.models.generate_content(
+                model=GLOBAL_CONFIG['model'],
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                    temperature=config.get('temperature', GLOBAL_CONFIG['default_temperature']),
+                    max_output_tokens=config.get('max_output_tokens', 1000),
+                    top_p=config.get('top_p', 0.9),
+                    top_k=config.get('top_k', 40),
+                    safety_settings=safety_settings,
+                ),
+            )
+
+            if hasattr(response, 'text') and response.text:
+                return response.text.strip()
+            elif hasattr(response, 'candidates') and response.candidates:
+                # Handle case where response.text might not be available
+                for candidate in response.candidates:
+                    if hasattr(candidate, 'content') and candidate.content:
+                        if hasattr(candidate.content, 'parts') and candidate.content.parts:
+                            for part in candidate.content.parts:
+                                if hasattr(part, 'text') and part.text:
+                                    return part.text.strip()
+
+            logger.warning(f"Empty response from API on attempt {attempt + 1}")
+            if attempt < GLOBAL_CONFIG['retry_attempts'] - 1:
+                time.sleep(2 ** attempt)  # Exponential backoff
+                continue
+            else:
+                return ERROR_MESSAGES['empty_response']
+
+        except Exception as e:
+            error_msg = str(e).lower()
+
+            # Handle specific error types
+            if 'timeout' in error_msg:
+                if attempt < GLOBAL_CONFIG['retry_attempts'] - 1:
+                    logger.warning(f"Timeout on attempt {attempt + 1}, retrying...")
+                    time.sleep(2 ** attempt)
+                    continue
+                else:
+                    return ERROR_MESSAGES['timeout_error']
+
+            elif 'safety' in error_msg or 'content' in error_msg:
+                return ERROR_MESSAGES['content_filter']
+
+            elif 'recitation' in error_msg:
+                logger.warning(f"Recitation error on attempt {attempt + 1}, retrying with adjusted prompt...")
+                if attempt < GLOBAL_CONFIG['retry_attempts'] - 1:
+                    time.sleep(1)
+                    continue
+                else:
+                    return ERROR_MESSAGES['api_error'].format(error_message="Content recitation detected")
+
+            else:
+                logger.error(f"API call failed on attempt {attempt + 1}: {e}")
+                if attempt < GLOBAL_CONFIG['retry_attempts'] - 1:
+                    time.sleep(2 ** attempt)
+                    continue
+                else:
+                    return ERROR_MESSAGES['api_error'].format(error_message=str(e))
+
+def explain_medical_terms(terms: List[str], abstracts: List[str]) -> str:
+    """
+    Explain medical terms using production-grade prompts, providing contextual, layered,
+    and clinically relevant explanations in markdown format.
+
+    Args:
+        terms: List of medical terms to explain\
+        abstracts: List of abstracts from selected articles to provide context\
+
+    Returns:
+        A single markdown-formatted string with explanations, or an error message\
+    """
     if not terms:
-        return {}
+        return "" # Return empty string for no terms
 
-    prompt = (
-        "You are a medical expert. For each medical term below, provide a short, simple explanation "
-        "that a non-medical person can easily understand.\n" +
-        "\n".join([f"{i+1}. {term}" for i, term in enumerate(terms)])
+    # Validate input, passing abstracts as additional_data
+    if not validate_input(terms, "explain_medical_terms", abstracts):
+        return f"ERROR: Invalid input for medical term explanation. Max {VALIDATION['max_terms_explain']} terms and max combined abstract length of {VALIDATION['max_abstracts_explain_context_length']} characters allowed."
+
+    # Get prompt configuration
+    prompt_config = PROMPTS['explain_medical_terms']
+
+    # Format terms list for the prompt
+    terms_list = ", ".join([f"'{term}'" for term in terms])
+
+    # Format abstracts for context
+    context_text = ""
+    if abstracts:
+        context_text = "\\n\\n--- Contextual Articles ---\\n"
+        for i, abstract in enumerate(abstracts):
+            context_text += f"Abstract {i+1}: {abstract}\\n"
+
+    # Build prompt from template
+    prompt = prompt_config['user_prompt_template'].format(
+        terms_list=terms_list,
+        context_text=context_text
     )
 
-    try:
-        response = model.generate_content(
-            prompt,
-            generation_config=genai.types.GenerationConfig(
-                temperature=0.2,
-                max_output_tokens=500,
-            )
-        )
+    # Make API call with retry logic
+    response_text = make_api_call_with_retry(
+        prompt=prompt,
+        system_instruction=prompt_config['system_instruction'],
+        config=prompt_config['config'],
+        function_name="explain_medical_terms"
+    )
 
-        if not response.text:
-            return {"error": "No response from Gemini"}
 
-        answer = response.text.strip()
+    if response_text.startswith("ERROR:"):
+        return response_text
 
-        # Post-process into {term: explanation} pairs
-        explanations = {}
-        for line in answer.split("\n"):
-            if "." in line and line.strip():
-                try:
-                    parts = line.split(".", 1)
-                    if len(parts) == 2 and parts[0].strip().isdigit():
-                        term_index = int(parts[0].strip()) - 1
-                        if 0 <= term_index < len(terms):
-                            explanations[terms[term_index]] = parts[1].strip()
-                except (ValueError, IndexError):
-                    continue
+    # no parsing needed here; the model is expected to return the final markdown string
+    return response_text
 
-        return explanations
-    except Exception as e:
-        return {"error": str(e)}
+
 
 def analyze_methodology(abstract: str) -> str:
-    prompt = (
-        "Analyze the following research abstract to summarize the study's methodology: "
-        "1) What type of study is it? 2) How many participants? 3) Methods used? 4) Any strengths/limitations? "
-        "Respond with clear sections.\n\n"
-        f"Abstract:\n{abstract}"
+    """
+    Analyze research methodology using production-grade prompts
+
+    Args:
+        abstract: Research abstract to analyze
+
+    Returns:
+        Methodology analysis string
+    """
+    # Validate input
+    if not validate_input(abstract, "analyze_methodology"):\
+        return f"ERROR: Abstract must be between {VALIDATION['min_abstract_length']} and {VALIDATION['max_abstract_length']} characters"
+
+    # Get prompt configuration
+    prompt_config = PROMPTS['analyze_methodology']
+
+    # Build prompt from template
+    prompt = prompt_config['user_prompt_template'].format(abstract=abstract)
+
+    # Make API call with retry logic
+    response_text = make_api_call_with_retry(
+        prompt=prompt,
+        system_instruction=prompt_config['system_instruction'],
+        config=prompt_config['config'],
+        function_name="analyze_methodology"
     )
 
-    try:
-        response = model.generate_content(
-            prompt,
-            generation_config=genai.types.GenerationConfig(
-                temperature=0.3,
-                max_output_tokens=600,
-            )
-        )
+    return response_text
 
-        if not response.text:
-            return "ERROR: No response from Gemini"
 
-        return response.text.strip()
-    except Exception as e:
-        return f"ERROR: {str(e)}"
 
-def analyze_research_gaps(abstracts: list[str], topic: str = "") -> list[str]:
-    abstracts_text = "\n\n".join([f"Abstract {i+1}:\n{a}" for i, a in enumerate(abstracts)])
-    prompt = (
-        f"You are a medical research expert. Based on the following abstracts about '{topic or 'the topic'}', "
-        "identify 3-5 important research gaps or open questions. Reply as a numbered list.\n\n"
-        f"{abstracts_text}"
+def analyze_research_gaps(abstracts: List[str], topic: str = "") -> List[str]:
+    """
+    Analyze research gaps using production-grade prompts
+
+    Args:
+        abstracts: List of research abstracts
+        topic: Research topic (optional)
+
+    Returns:
+        List of identified research gaps
+    """
+    # Validate input
+    if not validate_input(abstracts, "analyze_research_gaps"):
+        return [f"ERROR: Maximum {VALIDATION['max_abstracts_gaps']} abstracts allowed"]
+
+    # Get prompt configuration
+    prompt_config = PROMPTS['analyze_research_gaps']
+
+    # Format abstracts
+    abstracts_text = "\\n\\n".join([f"Abstract {i+1}:\\n{abstract}" for i, abstract in enumerate(abstracts)])
+
+    # Build prompt from template
+    prompt = prompt_config['user_prompt_template'].format(
+        topic=topic or "the research area",
+        abstracts_text=abstracts_text
     )
 
+    # Make API call with retry logic
+    response_text = make_api_call_with_retry(
+        prompt=prompt,
+        system_instruction=prompt_config['system_instruction'],
+        config=prompt_config['config'],
+        function_name="analyze_research_gaps"
+    )
+
+    # Handle errors
+    if response_text.startswith("ERROR:") or "error" in response_text.lower():
+        return [response_text]
+
+    # Parse response into list
     try:
-        response = model.generate_content(
-            prompt,
-            generation_config=genai.types.GenerationConfig(
-                temperature=0.3,
-                max_output_tokens=700,
-            )
-        )
-
-        if not response.text:
-            return ["ERROR: No response from Gemini"]
-
-        answer = response.text.strip()
-        # Extract numbered list items
         gaps = []
-        for line in answer.split("\n"):
-            if line.strip() and line[0].isdigit():
-                gap = line.partition(".")[2].strip()
-                if gap:
+        for line in response_text.split("\\n"):
+            line = line.strip()
+            if line and any(char.isdigit() for char in line[:3]):
+                # Extract gap after numbering
+                if ":" in line:
+                    gap = line.split(":", 1)[1].strip()
+                elif "." in line:
+                    parts = line.split(".", 1)
+                    if len(parts) > 1:
+                        gap = parts[1].strip()
+                    else:
+                        gap = line
+                else:
+                    gap = line
+
+                if gap and not gap.startswith(("ERROR", "error")):\
                     gaps.append(gap)
 
-        return gaps if gaps else [answer]
-    except Exception as e:
-        return [f"ERROR: {str(e)}"]
+        return gaps if gaps else ["ERROR: Failed to parse research gaps"]
 
-def generate_literature_review(abstracts: list[str], topic: str) -> str:
-    abstracts_text = "\n\n".join([f"ARTICLE {i+1}:\n{a}" for i, a in enumerate(abstracts)])
-    prompt = (
-        f"You are a medical research expert. Write a structured literature review about '{topic}', "
-        "based only on the provided article abstracts. Structure with: Introduction, Methods, Key Findings, "
-        "Contradictions & Debates, Gaps, Conclusion.\n\n"
-        f"{abstracts_text}"
+    except Exception as e:
+        logger.error(f"Error parsing research gaps response: {e}")
+        return [f"ERROR: Parse error - {str(e)}"]
+
+
+
+def generate_literature_review(abstracts: List[str], topic: str) -> str:
+    """
+    Generate literature review using production-grade prompts
+
+    Args:
+        abstracts: List of research abstracts
+        topic: Review topic
+
+    Returns:
+        Literature review string
+    """
+    # Validate input
+    if not validate_input(abstracts, "generate_literature_review"):
+        return f"ERROR: Maximum {VALIDATION['max_abstracts_review']} abstracts allowed"
+
+    # Get prompt configuration
+    prompt_config = PROMPTS['generate_literature_review']
+
+    # Format abstracts
+    abstracts_text = "\\n\\n".join([f"ARTICLE {i+1}:\\n{abstract}" for i, abstract in enumerate(abstracts)])
+
+    # Build prompt from template
+    prompt = prompt_config['user_prompt_template'].format(
+        topic=topic,
+        abstracts_text=abstracts_text
     )
 
-    try:
-        response = model.generate_content(
-            prompt,
-            generation_config=genai.types.GenerationConfig(
-                temperature=0.3,
-                max_output_tokens=3500,
-            )
-        )
+    # Make API call with retry logic
+    response_text = make_api_call_with_retry(
+        prompt=prompt,
+        system_instruction=prompt_config['system_instruction'],
+        config=prompt_config['config'],
+        function_name="generate_literature_review"
+    )
 
-        if not response.text:
-            return "ERROR: No response from Gemini"
+    return response_text
 
-        return response.text.strip()
-    except Exception as e:
-        return f"ERROR: {str(e)}"
 
-def compare_studies(studies: list[dict]) -> str:
+
+def compare_studies(studies: List[Dict[str, Any]]) -> str:
+    """
+    Compare studies using production-grade prompts
+
+    Args:
+        studies: List of study dictionaries with 'title' and 'abstract' keys
+
+    Returns:
+        Study comparison string
+    """
+    # Validate input
+    if not validate_input(studies, "compare_studies"):
+        return f"ERROR: Maximum {VALIDATION['max_studies_compare']} studies allowed"
+
+    # Get prompt configuration
+    prompt_config = PROMPTS['compare_studies']
+
+    # Format studies
     studies_text = ""
-    for i, s in enumerate(studies):
-        studies_text += f"STUDY {i+1}: {s.get('title','')} | Abstract: {s.get('abstract','')}\n\n"
+    for i, study in enumerate(studies):
+        title = study.get('title', f'Study {i+1}')
+        abstract = study.get('abstract', '')
+        studies_text += f"STUDY {i+1}: {title}\\nAbstract: {abstract}\\n\\n"
 
-    prompt = (
-        "Compare the provided research studies with focus on: "
-        "1) Research questions 2) Methods 3) Main findings 4) Strengths & weaknesses 5) What's similar/different. "
-        "Use structured sections with headings.\n\n"
-        f"{studies_text}"
+    # Build prompt from template
+    prompt = prompt_config['user_prompt_template'].format(studies_text=studies_text)
+
+    # Make API call with retry logic
+    response_text = make_api_call_with_retry(
+        prompt=prompt,
+        system_instruction=prompt_config['system_instruction'],
+        config=prompt_config['config'],
+        function_name="compare_studies"
     )
 
-    try:
-        response = model.generate_content(
-            prompt,
-            generation_config=genai.types.GenerationConfig(
-                temperature=0.3,
-                max_output_tokens=3500,
-            )
-        )
+    return response_text
 
-        if not response.text:
-            return "ERROR: No response from Gemini"
 
-        return response.text.strip()
-    except Exception as e:
-        return f"ERROR: {str(e)}"
+
+def get_config_info() -> Dict[str, Any]:
+    """Get current configuration information"""
+    return {
+        "model": GLOBAL_CONFIG['model'],
+        "retry_attempts": GLOBAL_CONFIG['retry_attempts'],
+        "timeout_seconds": GLOBAL_CONFIG['timeout_seconds'],
+        "validation_limits": VALIDATION,
+        "functions_available": list(PROMPTS.keys())
+    }
+
+def reload_config():
+    """Reload configuration from YAML file"""
+    global CONFIG, GLOBAL_CONFIG, PROMPTS, ERROR_MESSAGES, VALIDATION
+    CONFIG = load_prompts_config()
+    GLOBAL_CONFIG = CONFIG['global']
+    PROMPTS = CONFIG['prompts']
+    ERROR_MESSAGES = CONFIG['error_handling']
+    VALIDATION = CONFIG['validation']
+    logger.info("Configuration reloaded successfully")
