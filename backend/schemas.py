@@ -5,7 +5,6 @@ from typing import List, Dict, Optional
 class UserRegister(BaseModel):
     username: str
     password: str
-    # FIX: Make email required for registration
     email: EmailStr
 
 class UserLogin(BaseModel):
