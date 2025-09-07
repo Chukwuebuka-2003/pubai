@@ -5,6 +5,8 @@ from typing import List, Dict, Optional
 class UserRegister(BaseModel):
     username: str
     password: str
+    # FIX: Make email required for registration
+    email: EmailStr
 
 class UserLogin(BaseModel):
     username: str
@@ -16,10 +18,15 @@ class Token(BaseModel):
 
 class UserProfile(BaseModel):
     username: str
-    email: Optional[EmailStr] = None # Assuming email might be optional for now
+    email: Optional[EmailStr] = None
+    name: Optional[str] = None
+    title: Optional[str] = None
+
 
 class UpdateUserProfile(BaseModel):
     email: Optional[EmailStr] = None
+    name: Optional[str] = None
+    title: Optional[str] = None
 
 class ChangePassword(BaseModel):
     old_password: str
@@ -41,9 +48,10 @@ class SearchHistoryCreate(BaseModel):
 
 class ExplainTermRequest(BaseModel):
     terms: List[str]
+    abstracts: List[str] = []
 
 class ExplainTermResponse(BaseModel):
-    explanations: List[str]
+    explanation: str
 
 
 class MethodologyAnalysisRequest(BaseModel):
