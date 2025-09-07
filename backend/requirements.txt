@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+pyjwt
+passlib
+bcrypt
+python-dotenv
+requests
+aiohttp
+pydantic
+sqlalchemy
+alembic
+psycopg2-binary
+pydantic[email]
+google-genai
+PyYAML
