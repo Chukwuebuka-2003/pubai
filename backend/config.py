@@ -5,7 +5,7 @@ load_dotenv()
 
 # NCBI API details
 BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
-EMAIL = os.getenv("GMAIL_ADDRESS", "ebulamicheal@gmail.com") # Default for testing, use .env
+EMAIL = os.getenv("GMAIL_ADDRESS") # Default for testing, use .env
 TOOL = "PubMedSearchApp"
 NCBI_API_KEY = os.getenv("NCBI_API_KEY")
 

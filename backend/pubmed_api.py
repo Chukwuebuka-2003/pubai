@@ -276,11 +276,10 @@ def fetch_pubmed_articles_by_ids(pmids: list[str]) -> list[dict]:
             time.sleep(0.34)
 
         response = requests.get(fetch_url, params=fetch_params)
-        response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
+        response.raise_for_status() # Raise HTTPError for bad responses
         articles = parse_pubmed_xml(response.content)
         return articles
     except requests.exceptions.RequestException as e:
-        # Removed st.error, as streamlit is a frontend library and should not be used in the backend
         print(f"Error fetching articles by ID from PubMed API: {e}")
         return []
     except ET.ParseError as e:

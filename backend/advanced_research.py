@@ -8,9 +8,7 @@ from routers.utils import get_current_user
 
 import json
 
-router = APIRouter(prefix="/advanced", tags=["advanced"])  # Change prefix to avoid conflict
-
-# ... rest of the file stays the same
+router = APIRouter(prefix="/advanced", tags=["advanced"])
 
 
 @router.post("/", response_model=SearchHistoryItem)
