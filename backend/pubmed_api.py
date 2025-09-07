@@ -247,3 +247,42 @@ def get_citation_suggestions(query, max_results=5):
     except ET.ParseError as e:
         st.error(f"XML parsing error: {e}")
         return []
+
+
+def fetch_pubmed_articles_by_ids(pmids: list[str]) -> list[dict]:
+    """
+    Fetch details for a list of PubMed IDs directly using EFetch.
+    """
+    if not pmids:
+        return []
+
+    fetch_url = f"{BASE_URL}efetch.fcgi"
+    fetch_params = {
+        "db": "pubmed",
+        "id": ",".join(pmids),
+        "retmode": "xml",
+        "rettype": "abstract",
+        "tool": TOOL,
+        "email": EMAIL
+    }
+    if NCBI_API_KEY:
+        fetch_params["api_key"] = NCBI_API_KEY
+
+    try:
+        # Respect rate limits
+        if NCBI_API_KEY:
+            time.sleep(0.1)
+        else:
+            time.sleep(0.34)
+
+        response = requests.get(fetch_url, params=fetch_params)
+        response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
+        articles = parse_pubmed_xml(response.content)
+        return articles
+    except requests.exceptions.RequestException as e:
+        # Removed st.error, as streamlit is a frontend library and should not be used in the backend
+        print(f"Error fetching articles by ID from PubMed API: {e}")
+        return []
+    except ET.ParseError as e:
+        print(f"XML parsing error when fetching articles by ID: {e}")
+        return []
