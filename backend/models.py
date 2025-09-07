@@ -10,7 +10,9 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
-    email = Column(String, nullable=True)  # Add this line
+    email = Column(String, unique=True, nullable=True)
+    name = Column(String, nullable=True)
+    title = Column(String, nullable=True)
 
 
 class SearchHistory(Base):
