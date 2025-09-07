@@ -165,11 +165,11 @@ def explain_medical_terms(terms: List[str], abstracts: List[str]) -> str:
     and clinically relevant explanations in markdown format.
 
     Args:
-        terms: List of medical terms to explain\
-        abstracts: List of abstracts from selected articles to provide context\
+        terms: List of medical terms to explain
+        abstracts: List of abstracts from selected articles to provide context
 
     Returns:
-        A single markdown-formatted string with explanations, or an error message\
+        A single markdown-formatted string with explanations, or an error message
     """
     if not terms:
         return "" # Return empty string for no terms
@@ -225,7 +225,7 @@ def analyze_methodology(abstract: str) -> str:
         Methodology analysis string
     """
     # Validate input
-    if not validate_input(abstract, "analyze_methodology"):\
+    if not validate_input(abstract, "analyze_methodology"):
         return f"ERROR: Abstract must be between {VALIDATION['min_abstract_length']} and {VALIDATION['max_abstract_length']} characters"
 
     # Get prompt configuration
@@ -288,7 +288,7 @@ def analyze_research_gaps(abstracts: List[str], topic: str = "") -> List[str]:
     # Parse response into list
     try:
         gaps = []
-        for line in response_text.split("\\n"):
+        for line in response_text.split("\n"): # Changed from "\\n" to "\n"
             line = line.strip()
             if line and any(char.isdigit() for char in line[:3]):
                 # Extract gap after numbering
@@ -303,7 +303,7 @@ def analyze_research_gaps(abstracts: List[str], topic: str = "") -> List[str]:
                 else:
                     gap = line
 
-                if gap and not gap.startswith(("ERROR", "error")):\
+                if gap and not gap.startswith(("ERROR", "error")):
                     gaps.append(gap)
 
         return gaps if gaps else ["ERROR: Failed to parse research gaps"]
