@@ -1,4 +1,4 @@
-# pubmed/backend/main.py
+# main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -16,7 +16,7 @@ app = FastAPI()
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    # "https://your-frontend-domain.com",
+    "https://satoru-ai.vercel.app",
 ]
 
 app.add_middleware(
