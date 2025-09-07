@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException # Removed 'status'
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
-from database import get_db # Added relative import
-from models import SearchHistory # Added relative import
-from schemas import SearchHistoryItem, SearchHistoryCreate # Added relative import
-from routers.utils import get_current_user # Corrected import
+from database import get_db
+from models import SearchHistory
+from schemas import SearchHistoryItem, SearchHistoryCreate
+from routers.utils import get_current_user
 
 import json
 
@@ -43,7 +43,7 @@ def list_history(
     records = db.query(SearchHistory).filter(SearchHistory.username == current_user).order_by(SearchHistory.timestamp.desc()).all()
     result = []
     for r in records:
-        # Ensure r.articles is treated as a string before JSON parsing
+        # ensure r.articles is treated as a string before JSON parsing
         articles_data = json.loads(str(r.articles)) if r.articles is not None else []
         result.append({
             "id": r.id,
@@ -64,7 +64,7 @@ def get_history_entry(
     r = db.query(SearchHistory).filter(SearchHistory.id == history_id, SearchHistory.username == current_user).first()
     if not r:
         raise HTTPException(status_code=404, detail="History entry not found")
-    # Ensure r.articles is treated as a string before JSON parsing
+    # ensure r.articles is treated as a string before JSON parsing
     articles_data = json.loads(str(r.articles)) if r.articles is not None else []
     return {
         "id": r.id,

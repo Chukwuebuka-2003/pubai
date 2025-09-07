@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from schemas import ExplainTermRequest, ExplainTermResponse
-from services.gemini_service import explain_medical_terms  # Changed from openai_service
+from services.gemini_service import explain_medical_terms
 from .utils import get_current_user
 
 from schemas import (
@@ -9,7 +9,7 @@ from schemas import (
     LiteratureReviewRequest, LiteratureReviewResponse,
     StudyComparisonRequest, StudyComparisonResponse
 )
-from services.gemini_service import (  # Changed from openai_service
+from services.gemini_service import (
     analyze_methodology, analyze_research_gaps,
     generate_literature_review, compare_studies
 )
@@ -22,12 +22,16 @@ def explain_term(
     current_user: str = Depends(get_current_user)
 ):
     """
-    Explain medical terms (Gemini-powered).
+    Explain medical terms (Gemini-powered) with context from abstracts.
     """
-    result = explain_medical_terms(body.terms)
-    if "error" in result:
-        raise HTTPException(status_code=500, detail="Gemini error: " + result["error"])
-    return {"explanations": result}
+    # Pass both terms and abstracts to the service function
+    result = explain_medical_terms(body.terms, body.abstracts)
+
+    if result.startswith("ERROR:"):
+        raise HTTPException(status_code=500, detail=result)
+
+    return {"explanation": result}
+
 
 @router.post("/analyze-methodology", response_model=MethodologyAnalysisResponse)
 def analyze_methodology_endpoint(

@@ -11,10 +11,14 @@ router = APIRouter(prefix="/user", tags=["user"])
 
 @router.get("/me", response_model=UserProfile)
 def get_profile(current_username: str = Depends(get_current_user), db: Session = Depends(get_db)):
+    print(f"Backend: Attempting to fetch profile for username: {current_username}")
+
     user = db.query(User).filter(User.username == current_username).first()
     if not user:
+        print(f"Backend: User '{current_username}' not found in database.")
         raise HTTPException(status_code=404, detail="User not found")
-    return UserProfile(username=user.username, email=user.email)
+    #return name and title from the user object
+    return UserProfile(username=user.username, email=user.email, name=user.name, title=user.title)
 
 @router.patch("/me", response_model=UserProfile)
 def update_profile(
@@ -25,10 +29,15 @@ def update_profile(
     user = db.query(User).filter(User.username == current_username).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    user.email = update.email or user.email
+
+    # allow updating name and title
+    user.email = update.email if update.email is not None else user.email
+    user.name = update.name if update.name is not None else user.name
+    user.title = update.title if update.title is not None else user.title
+
     db.commit()
-    db.refresh(user) # Refresh the user object after commit to get the latest state
-    return UserProfile(username=user.username, email=user.email)
+    db.refresh(user)
+    return UserProfile(username=user.username, email=user.email, name=user.name, title=user.title)
 
 @router.post("/change-password")
 def change_password(
